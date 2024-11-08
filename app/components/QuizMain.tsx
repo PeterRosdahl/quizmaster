@@ -2,88 +2,91 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './QuizMain.module.scss';
-// import styles from '@/styles/components/QuizMain.module.scss';
-// import { QuizResponse } from '@/types';
+
+interface Question {
+    level: number;
+    question: string;
+    difficulty: string;
+}
+
+interface Quiz {
+    questions: Question[];
+    intro: string;
+
+}
+interface ApiResponse {
+    success: boolean;
+    data?: {
+        quiz: Quiz;
+    };
+    error?: string;
+}
 
 export default function QuizMain() {
-    const [quiz, setQuiz] = useState<any | null>(null);
-    const [guess, setGuess] = useState('');
-    const [currentLevel, setCurrentLevel] = useState(1);
-    const [gameOver, setGameOver] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const [quiz, setQuiz] = useState<Quiz | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchQuestions = async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+
+            const response = await fetch('/api/questions');
+            const rawText = await response.text();
+            let data: ApiResponse;
+            try {
+                data = JSON.parse(rawText);
+            } catch (e) {
+                console.error('Failed to parse JSON:', e);
+                throw new Error('Invalid JSON response from server');
+            }
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to fetch questions');
+            }
+            
+            console.log(data?.data);
+            if (!data.success || !data.data?.quiz) {
+                
+                throw new Error('Invalid response format');
+            }
+
+            setQuiz(data.data.quiz);
+        } catch (error: any) {
+            console.error('Failed to fetch questions:', error);
+            setError(error.message || 'Failed to load questions');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        fetchNewQuiz();
+        fetchQuestions();
     }, []);
 
-    const fetchNewQuiz = async () => {
-        try {
-            setLoading(true);
-            const response = await fetch('/api/quiz', { 
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            });
-            const data = await response.json();
-            setQuiz(data);
-            setCurrentLevel(1);
-            setGameOver(false);
-            setGuess('');
-        } catch (error) {
-            console.error('Fel vid hämtning av quiz:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    if (isLoading) {
+        return <div className={styles.container}>Laddar frågor...</div>;
+    }
 
-    const handleGuess = () => {
-        if (!quiz) return;
-
-        if (guess.toLowerCase() === quiz.answer.toLowerCase()) {
-            setGameOver(true);
-            alert(`Grattis! Du klarade det på nivå ${currentLevel}!`);
-        } else if (currentLevel >= 10) {
-            setGameOver(true);
-            alert(`Tyvärr! Rätt svar var: ${quiz.answer}`);
-        } else {
-            setCurrentLevel(prev => prev + 1);
-            setGuess('');
-        }
-    };
-
-    if (loading) return <div>Laddar quiz...</div>;
-    if (!quiz) return <div>Något gick fel...</div>;
+    if (error) {
+        return <div className={styles.error}>Error: {error}</div>;
+    }
 
     return (
         <div className={styles.container}>
-            <h1>Gissa Objektet</h1>
-            
-            <div className={styles.gameArea}>
-                <div className={styles.clue}>
-                    Nivå {currentLevel}: {quiz.clues[quiz.clues.length - currentLevel]}
+            <h1>Quiz</h1>
+            {quiz && quiz.questions.length > 0 ? (
+                <div className={styles.questions}>
+                    {quiz.questions.map((question, index) => (
+                        <div key={index} className={styles.question}>
+                            <h3>Nivå {question.level} ({question.difficulty})</h3>
+                            <p>{question.question}</p>
+                        </div>
+                    ))}
                 </div>
-
-                {!gameOver && (
-                    <div className={styles.inputArea}>
-                        <input
-                            type="text"
-                            value={guess}
-                            onChange={(e) => setGuess(e.target.value)}
-                            placeholder="Skriv din gissning här"
-                            onKeyPress={(e) => e.key === 'Enter' && handleGuess()}
-                        />
-                        <button onClick={handleGuess}>Gissa</button>
-                    </div>
-                )}
-
-                <button 
-                    className={styles.newGameButton}
-                    onClick={fetchNewQuiz}
-                >
-                    Nytt Quiz
-                </button>
-            </div>
+            ) : (
+                <p>Inga frågor tillgängliga</p>
+            )}
         </div>
     );
 }
